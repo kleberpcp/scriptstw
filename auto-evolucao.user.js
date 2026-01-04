@@ -2,11 +2,11 @@
 // @name         Auto Evolução PP (com Auto Farm por População)
 // @namespace    http://tampermonkey.net/
 // @version      1.1
-// @description  Script TribalWars
-// @author       edited by phxy
+// @description  Script TribalWars - PP pack
+// @author       Melhorado por Phoenix
 // @include      **screen=main*
-// @downloadURL    https://github.com/kleberpcp/scriptstw/blob/master/auto%20evolu%C3%A7%C3%A3o%20PP.js
-// @updateURL      https://github.com/kleberpcp/scriptstw/blob/master/auto%20evolu%C3%A7%C3%A3o%20PP.js
+// @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
+// @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
 // @grant        none
 // @grant        GM_getValue
 // @grant        GM_setValue
