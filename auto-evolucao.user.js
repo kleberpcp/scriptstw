@@ -2,8 +2,8 @@
 // @name         Auto Evolução PP (com Auto Farm por População)
 // @namespace    http://tampermonkey.net/
 // @version      1.1
-// @description  Script TribalWars - PP pack
-// @author       Melhorado por Phoenix
+// @description  Script TribalWars
+// @author       edited by phxy
 // @include      **screen=main*
 // @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
 // @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
@@ -94,12 +94,12 @@ var autoBuild = [
     ["main_buildrow_hide",10],
     ["main_buildrow_wood",18],
     ["main_buildrow_stone",17],
-    ["main_buildrow_market",13],
+    ["main_buildrow_market",15],
     ["main_buildrow_wood",20],
     ["main_buildrow_farm",15],
     ["main_buildrow_stone",19],
     ["main_buildrow_stone",20],
-    ["main_buildrow_market",15],
+    ["main_buildrow_market",20],
     ["main_buildrow_farm",16],
     ["main_buildrow_main",15],
     ["main_buildrow_storage",20],
@@ -110,7 +110,7 @@ var autoBuild = [
     ["main_buildrow_wood",21],
     ["main_buildrow_stone",21],
     ["main_buildrow_iron",20],
-    ["main_buildrow_market",17],
+//    ["main_buildrow_market",17],
     ["main_buildrow_wood",22],
     ["main_buildrow_stone",22],
     ["main_buildrow_barracks",15],
@@ -118,7 +118,7 @@ var autoBuild = [
     ["main_buildrow_stone",23],
     ["main_buildrow_smith",10],
     ["main_buildrow_garage",5],
-    ["main_buildrow_market",20],
+//    ["main_buildrow_market",20],
 //    ["main_buildrow_farm",22],
     ["main_buildrow_wood",24],
     ["main_buildrow_stone",24],
