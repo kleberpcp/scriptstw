@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Auto Evolução PP (com Auto Farm por População)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @description  Script TribalWars
 // @author       edited by phxy
 // @include      **screen=main*
