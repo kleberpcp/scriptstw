@@ -87,6 +87,7 @@ var autoBuild = [
     ["main_buildrow_wood",15],
     ["main_buildrow_stone",13],
     ["main_buildrow_iron",13],
+    ["main_buildrow_main",10],
     ["main_buildrow_smith",5],
     ["main_buildrow_stable",3],
     ["main_buildrow_wood",16],
