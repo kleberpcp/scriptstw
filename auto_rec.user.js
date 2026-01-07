@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Auto Recrutamento
-// @version      0.9.5
+// @version      0.9.6
 // @description  Recrutamento automático PHX bot com reservas + reserva de fazenda e metas por aldeia + limite TOTAL de fila 2 + limite 2 por unidade + UI compacta recolher/expandir
 // @author       Phoenix
 // @include      https://*.*.*.*&screen=train**
 // @include      https://*.*.*.*&screen=stable**
 // @include      https://*.*.*.*&screen=barracks**
+// @exclude      https://*.*.*.*&screen=train&mode=mass**
+// @exclude      https://*.*.*.*&screen=train&mode=mass_decommission**
 // @include      https://*.tribalwars.com.br/game.php?screen=train&t=*&village=*
 // @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
 // @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
