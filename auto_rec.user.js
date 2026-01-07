@@ -16,10 +16,11 @@
 (function () {
   'use strict';
 
-  // ======= AJUSTES PRINCIPAIS =======
-  const LIMITE_FILA_TOTAL = 2;     // você pediu: só 2 na fila total
-  const LOOP_MS = 4000;            // tentativa a cada 4s (seguro)
-  // ==================================
+  // =======================
+  // CONFIG GERAL
+  // =======================
+  const LIMITE_FILA_TOTAL = 2;
+  const LOOP_MS = 4000;
 
   const villageId = new URLSearchParams(location.search).get('village') || '0';
 
@@ -34,12 +35,12 @@
     { key: "catapult", label: "Catapulta",    icon: "/graphic/unit/unit_catapult.png" },
   ];
 
-  const popPerUnit = {
-    spear: 1, sword: 1, axe: 1, spy: 2, light: 4, heavy: 6, ram: 5, catapult: 8
-  };
+  const popPerUnit = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:8 };
 
-  // ======= CONFIG (por aldeia) =======
-  let quantidadePorCiclo = 1;   // "Qtd por ciclo" (máximo por unidade que ele tenta colocar)
+  // =======================
+  // CONFIG POR ALDEIA (localStorage)
+  // =======================
+  let quantidadePorCiclo = 1;
   let tempoReloadMin = 10;
 
   let reservaMadeira = 0;
@@ -47,14 +48,14 @@
   let reservaFerro = 0;
   let reservaFazenda = 0;
 
-  let metas = {
-    spear: 0, sword: 0, axe: 0, spy: 0, light: 0, heavy: 0, ram: 0, catapult: 0
-  };
+  let metas = { spear:0, sword:0, axe:0, spy:0, light:0, heavy:0, ram:0, catapult:0 };
 
   let lastSuccess = null; // {time, text}
   let reloadInterval = null;
 
-  // ======= HELPERS =======
+  // =======================
+  // HELPERS
+  // =======================
   function nowStr() {
     const d = new Date();
     return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
@@ -83,15 +84,13 @@
   }
 
   function getUnitCost(unitKey) {
-    // custo mostrado na tabela do TW
-    const w = parseIntTW($(`#${unitKey}_0_cost_wood`).text());
-    const s = parseIntTW($(`#${unitKey}_0_cost_stone`).text());
-    const i = parseIntTW($(`#${unitKey}_0_cost_iron`).text());
-    // se a unidade não existir nessa tela, valores podem virar 0
-    return { wood: w, stone: s, iron: i };
+    return {
+      wood:  parseIntTW($(`#${unitKey}_0_cost_wood`).text()),
+      stone: parseIntTW($(`#${unitKey}_0_cost_stone`).text()),
+      iron:  parseIntTW($(`#${unitKey}_0_cost_iron`).text()),
+    };
   }
 
-  // quantidade atual (na aldeia) tentativa robusta
   function getCurrentUnitCount(unitKey) {
     const direct = $(`#unit_count_${unitKey}`);
     if (direct.length) return parseIntTW(direct.text());
@@ -102,7 +101,6 @@
     const $row = $input.closest('tr');
     if (!$row.length) return 0;
 
-    // tenta achar algo tipo "2/31" na coluna "Na aldeia/total"
     const textRow = $row.text();
     const m = textRow.match(/(\d+)\s*\/\s*(\d+)/);
     if (m) return parseInt(m[1], 10) || 0;
@@ -110,10 +108,10 @@
     return 0;
   }
 
-  // ========= FILA (AQUI É O PONTO CRÍTICO) =========
-  // Vamos achar as linhas de fila pelo botão/link "Cancelar" e pegar o <tr> pai.
+  // =======================
+  // FILA (contagem + por unidade)
+  // =======================
   function getQueueRows() {
-    // pega elementos de cancelar mais prováveis
     const $cancels = $(`a, button, input[type="submit"], input[type="button"]`).filter(function () {
       const t = ($(this).text() || $(this).val() || '').trim().toLowerCase();
       return t === 'cancelar';
@@ -125,14 +123,12 @@
       if ($tr.length) rows.push($tr.get(0));
     });
 
-    // dedup
     const unique = [...new Set(rows)];
     return $(unique);
   }
 
   function getQueueTotalCount() {
-    const $rows = getQueueRows();
-    return $rows.length || 0;
+    return getQueueRows().length || 0;
   }
 
   function getQueuedCountByUnit(unitKey) {
@@ -142,15 +138,12 @@
     let count = 0;
     $rows.each(function () {
       const $tr = $(this);
-
-      // tenta achar um ícone de unidade na linha
       const $img = $tr.find('img').first();
       const src = ($img.attr('src') || '').toLowerCase();
       const alt = ($img.attr('alt') || '').toLowerCase();
       const title = ($img.attr('title') || '').toLowerCase();
       const txt = $tr.text().toLowerCase();
 
-      // heurísticas: unit_key aparece no src, ou texto/alt/title
       const hit =
         src.includes(`unit_${unitKey}`) ||
         src.includes(`/${unitKey}.`) ||
@@ -163,7 +156,6 @@
 
     return count;
   }
-  // ================================================
 
   function clearAllInputs() {
     for (const u of unitOrder) {
@@ -176,8 +168,7 @@
     const $form = $('#train_form, form[name="train_form"], form[action*="train"]').first();
     if (!$form.length) return false;
 
-    // botão de recrutar dentro do form
-    let $btn = $form.find('button, input[type="submit"], input[type="button"], a').filter(function () {
+    const $btn = $form.find('button, input[type=submit], input[type=button], a').filter(function () {
       const t = ($(this).text() || $(this).val() || '').trim().toLowerCase();
       return t === 'recrutar';
     }).first();
@@ -187,7 +178,6 @@
       return true;
     }
 
-    // fallback submit nativo
     const formEl = $form.get(0);
     if (!formEl) return false;
 
@@ -198,22 +188,18 @@
     try { formEl.submit(); return true; } catch (e) { return false; }
   }
 
-  // Checa se dá pra adicionar "qtd" daquela unidade respeitando reservas e pop
   function canAddUnit(unitKey, qtd, budget) {
     if (qtd <= 0) return false;
 
     const cost = getUnitCost(unitKey);
-    // unidade não disponível/visível -> custo pode ser 0; se input existe, custo deve existir
-    // se custo for 0 e não for spear (ou custos realmente 0), evitamos recrutar errado
     if ((cost.wood + cost.stone + cost.iron) === 0) return false;
 
     const popNeed = (popPerUnit[unitKey] || 0) * qtd;
 
-    // budget tem recursos disponíveis já descontando reserva
-    if (budget.wood < cost.wood * qtd) return false;
+    if (budget.wood  < cost.wood  * qtd) return false;
     if (budget.stone < cost.stone * qtd) return false;
-    if (budget.iron < cost.iron * qtd) return false;
-    if (budget.pop < popNeed) return false;
+    if (budget.iron  < cost.iron  * qtd) return false;
+    if (budget.pop   < popNeed)          return false;
 
     return true;
   }
@@ -222,7 +208,6 @@
     const $in = getUnitInput(unitKey);
     if (!$in.length) return 0;
 
-    // respeita max do TW (se existir)
     const maxAttr = parseInt($in.attr('max'), 10);
     if (!isNaN(maxAttr) && maxAttr > 0) qtd = Math.min(qtd, maxAttr);
     if (qtd <= 0) return 0;
@@ -231,7 +216,9 @@
     return qtd;
   }
 
-  // ======= CORE: PLANEJA PREENCHER ATÉ COMPLETAR 2 NA FILA EM UM ÚNICO SUBMIT =======
+  // =======================
+  // CORE: preenche até 2 na fila em 1 submit
+  // =======================
   function tentativaDeRecrutamento() {
     if (!/screen=train/.test(location.href)) return;
 
@@ -241,20 +228,16 @@
     const slotsLivresNaFila = LIMITE_FILA_TOTAL - filaAtual;
     if (slotsLivresNaFila <= 0) return;
 
-    // orçamento de recursos/pop respeitando reservas
     const res = getResources();
     const pop = getPopInfo();
 
-    // recursos disponíveis = atual - reserva
     const budget = {
-      wood: Math.max(0, res.wood - reservaMadeira),
+      wood:  Math.max(0, res.wood  - reservaMadeira),
       stone: Math.max(0, res.stone - reservaArgila),
-      iron: Math.max(0, res.iron - reservaFerro),
-      // pop disponível = pop livre - reservaFazenda
-      pop: Math.max(0, pop.free - reservaFazenda)
+      iron:  Math.max(0, res.iron  - reservaFerro),
+      pop:   Math.max(0, pop.free  - reservaFazenda),
     };
 
-    // limpa inputs antes de planejar (evita resíduos de tentativas)
     clearAllInputs();
 
     let slotsRestantes = slotsLivresNaFila;
@@ -278,38 +261,31 @@
 
       const faltaParaMeta = target - totalEstimado;
 
-      // quanto vamos tentar colocar desta unidade
-      // - não passar do que falta pra meta
-      // - não passar dos slots restantes na fila total
-      // - não passar de quantidadePorCiclo (pra não encher demais por unidade)
-      let qtd = Math.min(faltaParaMeta, slotsRestantes, Math.max(1, quantidadePorCiclo));
+      let qtd = Math.min(
+        faltaParaMeta,
+        slotsRestantes,
+        Math.max(1, quantidadePorCiclo)
+      );
 
-      // tenta reduzir qtd até caber em recursos/pop
       while (qtd > 0 && !canAddUnit(u.key, qtd, budget)) qtd--;
-
       if (qtd <= 0) continue;
 
-      // aplica no input
       const applied = applyUnit(u.key, qtd);
       if (applied <= 0) continue;
 
-      // desconta do orçamento
       const cost = getUnitCost(u.key);
-      budget.wood -= cost.wood * applied;
+      budget.wood  -= cost.wood  * applied;
       budget.stone -= cost.stone * applied;
-      budget.iron -= cost.iron * applied;
-      budget.pop -= (popPerUnit[u.key] || 0) * applied;
+      budget.iron  -= cost.iron  * applied;
+      budget.pop   -= (popPerUnit[u.key] || 0) * applied;
 
       slotsRestantes -= applied;
       algoPreenchido = true;
       filledDesc.push(`${u.label} x${applied}`);
-
-      // continua no próximo tipo (para completar slots, se ainda tiver)
     }
 
     if (!algoPreenchido) return;
 
-    // SUBMIT ÚNICO (isso é o que garante preencher 2 de uma vez)
     const ok = submitRecruitForm();
     if (ok) {
       lastSuccess = { time: nowStr(), text: filledDesc.join(' + ') };
@@ -317,7 +293,23 @@
     }
   }
 
-  // ======= UI =======
+  // =======================
+  // UI (pixel perfect + foco suave + snap bordas + toast salvo)
+  // =======================
+  function renderTargets() {
+    const $wrap = $('#unitTargets');
+    $wrap.empty();
+    for (const u of unitOrder) {
+      $wrap.append(`
+        <div class="unit-option">
+          <img src="${u.icon}">
+          <span>${u.label}</span>
+          <input type="number" id="meta_${u.key}" value="0" min="0">
+        </div>
+      `);
+    }
+  }
+
   function renderStatus() {
     const $box = $('#recruitStatusBox');
     if (!$box.length) return;
@@ -350,9 +342,17 @@
     $box.html(html);
   }
 
-  function showSaved() {
-    $('#savedToast').stop(true, true).fadeIn(120);
-    setTimeout(() => $('#savedToast').fadeOut(250), 1200);
+  // ✅ Toast que você gostava: "Configurações salvas!"
+  function showSavedToast() {
+    const $t = $('#savedToast');
+    if (!$t.length) return;
+    $t.stop(true, true).fadeIn(120);
+    setTimeout(() => $t.fadeOut(250), 1300);
+  }
+
+  function restartReloadTimer() {
+    if (reloadInterval) clearInterval(reloadInterval);
+    reloadInterval = setInterval(() => location.reload(), (tempoReloadMin * 60 * 1000));
   }
 
   function setCollapsed(collapsed, persist = true) {
@@ -363,34 +363,13 @@
     if (persist) localStorage.setItem(`recruit_ui_collapsed_${villageId}`, collapsed ? '1' : '0');
   }
 
-  function restartReloadTimer() {
-    if (reloadInterval) clearInterval(reloadInterval);
-    reloadInterval = setInterval(() => location.reload(), (tempoReloadMin * 60 * 1000));
-  }
-
-  function renderTargets() {
-    const $wrap = $('#unitTargets');
-    $wrap.empty();
-    for (const u of unitOrder) {
-      $wrap.append(`
-        <div class="unit-option">
-          <img src="${u.icon}">
-          <span>${u.label}</span>
-          <input type="number" id="meta_${u.key}" value="0" min="0" placeholder="Meta">
-        </div>
-      `);
-    }
-    $wrap.append(`<div class="hint">Meta 0 desativa a unidade.</div>`);
-  }
-
   function salvarConfiguracoes() {
     quantidadePorCiclo = parseInt($('#quantidadeRecrutar').val(), 10) || 1;
     tempoReloadMin = parseInt($('#tempoReloadMin').val(), 10) || 10;
 
     reservaMadeira = parseInt($('#reservaMadeira').val(), 10) || 0;
-    reservaArgila = parseInt($('#reservaArgila').val(), 10) || 0;
-    reservaFerro = parseInt($('#reservaFerro').val(), 10) || 0;
-
+    reservaArgila  = parseInt($('#reservaArgila').val(), 10) || 0;
+    reservaFerro   = parseInt($('#reservaFerro').val(), 10) || 0;
     reservaFazenda = parseInt($('#reservaFazenda').val(), 10) || 0;
 
     for (const u of unitOrder) {
@@ -408,7 +387,10 @@
     };
 
     localStorage.setItem(`configuracoesRecrutamento_${villageId}`, JSON.stringify(conf));
-    showSaved();
+
+    // ✅ REVERTE APENAS ESTA FUNCIONALIDADE (toast)
+    showSavedToast();
+
     restartReloadTimer();
     renderStatus();
   }
@@ -424,9 +406,8 @@
       tempoReloadMin = parseInt(c.tempoReloadMin || 10, 10);
 
       reservaMadeira = parseInt(c.reservaMadeira || 0, 10);
-      reservaArgila = parseInt(c.reservaArgila || 0, 10);
-      reservaFerro = parseInt(c.reservaFerro || 0, 10);
-
+      reservaArgila  = parseInt(c.reservaArgila || 0, 10);
+      reservaFerro   = parseInt(c.reservaFerro || 0, 10);
       reservaFazenda = parseInt(c.reservaFazenda || 0, 10);
 
       metas = Object.assign(metas, c.metas || {});
@@ -450,83 +431,203 @@
     }
   }
 
-  // ======= INJETAR UI =======
+  // =======================
+  // INJETAR UI
+  // =======================
   $('body').append(`
-    <style>
-      #recruitPanel { position: fixed; top: 60px; left: 10px; width: 240px; z-index: 9999; font-family: Verdana, sans-serif; color: #3b1f0e; }
-      #recruitToggleHeader {
-        background: rgba(222, 193, 150, 0.98);
-        border: 2px solid #8b5c2f;
-        border-radius: 10px;
-        padding: 6px 10px;
-        cursor: pointer;
-        font-weight: bold;
-        box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
-        user-select: none;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-      #recruitToggleHeader .left { display: flex; align-items: center; gap: 6px; }
-      #recruitToggleHeader .chev { font-size: 12px; opacity: 0.9; }
-      #recruitBody {
-        margin-top: 6px;
-        background: rgba(242, 230, 198, 0.95);
-        padding: 10px;
-        border: 2px solid #8b5c2f;
-        border-radius: 10px;
-        box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
-        cursor: move;
-      }
-      .sectionTitle { font-weight: bold; font-size: 12px; margin: 2px 0 6px 0; }
-      .unit-option { display: grid; grid-template-columns: 18px 1fr 80px; align-items: center; gap: 6px; margin-bottom: 5px; }
-      .unit-option img { width: 18px; height: 18px; }
-      .unit-option span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      input[type="number"] { width: 80px; padding: 2px 4px; font-size: 12px; }
-      .row2 { display: grid; grid-template-columns: 1fr 80px; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; }
-      .divider { height: 1px; background: rgba(139, 92, 47, 0.35); margin: 8px 0; }
-      #saveSettings { background: #dec196; border: 1px solid #8b5c2f; padding: 6px 10px; cursor: pointer; border-radius: 8px; margin-top: 8px; width: 100%; font-weight: bold; }
-      #savedToast { margin-top: 6px; color: #0a7a20; font-weight: bold; display: none; font-size: 12px; }
-      #recruitStatusBox { margin-top: 8px; padding: 8px; border: 1px dashed rgba(139, 92, 47, .7); border-radius: 8px; background: rgba(255,255,255,.35); }
-      .hint { font-size: 11px; opacity: 0.85; margin-top: 4px; line-height: 1.25; }
-      #recruitPanel.collapsed #recruitBody { display: none; }
-    </style>
+<style>
+  :root{
+    --phx-bg: rgba(242,230,198,0.96);
+    --phx-bg2: rgba(232,215,180,0.92);
+    --phx-border: #8b5c2f;
+    --phx-text: #3b1f0e;
+    --phx-shadow: 2px 2px 5px rgba(0,0,0,.18);
 
-    <div id="recruitPanel">
-      <div id="recruitToggleHeader" title="Clique para recolher/expandir">
-        <div class="left">⚙️ <span>Recrutamento</span></div>
-        <div class="chev" id="recruitChev">▾</div>
-      </div>
+    --phx-input-bg: rgba(255,255,255,0.22);
+    --phx-input-border: rgba(139,92,47,0.40);
+    --phx-input-focus-ring: rgba(139,92,47,0.14);
 
-      <div id="recruitBody">
-        <div class="sectionTitle">⚔️ Metas (recrutar até)</div>
-        <div id="unitTargets"></div>
+    --phx-panel-w: 270px;
+    --phx-input-w: 64px;
+    --phx-gap: 8px;
+    --phx-icon-w: 18px;
+  }
 
-        <div class="divider"></div>
+  #recruitPanel{
+    position: fixed;
+    top: 60px;
+    left: 10px;
+    width: var(--phx-panel-w);
+    z-index: 9999;
+    font-family: Verdana, sans-serif;
+    color: var(--phx-text);
+  }
 
-        <div class="row2"><label>Qtd por ciclo:</label><input type="number" id="quantidadeRecrutar" value="1" min="1"></div>
-        <div class="row2"><label>Reload (min):</label><input type="number" id="tempoReloadMin" value="10" min="1"></div>
+  #recruitToggleHeader{
+    background: linear-gradient(180deg,#e6cfa1,#d7bc8c);
+    border: 2px solid var(--phx-border);
+    border-radius: 12px;
+    padding: 7px 10px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: var(--phx-shadow);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    user-select:none;
+  }
 
-        <div class="divider"></div>
+  #recruitToggleHeader .chev{
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(139,92,47,.4);
+    background: rgba(255,255,255,.18);
+  }
 
-        <div class="sectionTitle">Reserva Recursos</div>
-        <div class="row2"><label>Madeira</label><input type="number" id="reservaMadeira" value="0" min="0"></div>
-        <div class="row2"><label>Argila</label><input type="number" id="reservaArgila" value="0" min="0"></div>
-        <div class="row2"><label>Ferro</label><input type="number" id="reservaFerro" value="0" min="0"></div>
+  #recruitBody{
+    margin-top: 8px;
+    background: linear-gradient(180deg,var(--phx-bg),var(--phx-bg2));
+    padding: 10px;
+    border: 2px solid var(--phx-border);
+    border-radius: 12px;
+    box-shadow: var(--phx-shadow);
+    cursor: move;
+  }
 
-        <div class="divider"></div>
+  .sectionTitle{ font-weight:bold; font-size:12px; margin:2px 0 8px; }
+  .divider{ height:1px; background:rgba(139,92,47,.35); margin:10px 0; }
+  .hint{ font-size:11px; opacity:.85; margin-top:4px; }
 
-        <div class="sectionTitle">Reserva Fazenda</div>
-        <div class="row2"><label>Pop livre:</label><input type="number" id="reservaFazenda" value="0" min="0"></div>
+  .unit-option{
+    display:grid;
+    grid-template-columns: var(--phx-icon-w) 1fr var(--phx-input-w);
+    column-gap: var(--phx-gap);
+    align-items:center;
+    margin-bottom:6px;
+  }
+  .unit-option img{ width:var(--phx-icon-w); height:var(--phx-icon-w); }
+  .unit-option span{
+    font-size:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
 
-        <div class="hint">Fila total máx: <b>${LIMITE_FILA_TOTAL}</b></div>
+  .row2{
+    display:grid;
+    grid-template-columns: 1fr var(--phx-input-w);
+    column-gap: var(--phx-gap);
+    align-items:center;
+    margin:6px 0;
+    font-size:12px;
+  }
 
-        <button id="saveSettings">💾 Salvar Configurações</button>
-        <div id="savedToast">Configurações salvas!</div>
+  #recruitPanel input[type="number"]{
+    width: var(--phx-input-w);
+    justify-self: end;
+    padding:4px 6px;
+    font-size:12px;
+    border-radius:8px;
+    border:1px solid var(--phx-input-border);
+    background: var(--phx-input-bg);
+    color: var(--phx-text);
+    text-align:right;
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.06);
+    outline:none;
+    transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
+  }
 
-        <div id="recruitStatusBox"></div>
-      </div>
+  #recruitPanel input[type="number"]:focus{
+    background: rgba(255,255,255,0.30);
+    border-color: rgba(139,92,47,.70);
+    box-shadow:
+      inset 0 1px 2px rgba(0,0,0,.08),
+      0 0 0 2px var(--phx-input-focus-ring);
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
+  input[type="number"]{ -moz-appearance:textfield; }
+
+  #saveSettings{
+    margin-top:10px;
+    width:100%;
+    padding:8px 10px;
+    border-radius:12px;
+    border:1px solid var(--phx-border);
+    background: linear-gradient(180deg,#e2c89b,#d6b888);
+    font-weight:bold;
+    cursor:pointer;
+    box-shadow: 0 2px 0 rgba(139,92,47,.35), 0 5px 10px rgba(0,0,0,.12);
+  }
+
+  #savedToast{
+    display:none;
+    margin-top:8px;
+    font-size:12px;
+    font-weight:bold;
+    color:#0a7a20;
+  }
+
+  #recruitStatusBox{
+    margin-top:10px;
+    padding:8px;
+    border:1px dashed rgba(139,92,47,.6);
+    border-radius:10px;
+    background: rgba(255,255,255,.28);
+    font-size:12px;
+  }
+
+  #recruitPanel.collapsed #recruitBody{ display:none; }
+
+  #recruitPanel.snapping{ transition: left 120ms ease, top 120ms ease; }
+</style>
+
+<div id="recruitPanel">
+  <div id="recruitToggleHeader" title="Clique para recolher/expandir">
+    <div>⚙️ Recrutamento</div>
+    <div class="chev" id="recruitChev">▾</div>
+  </div>
+
+  <div id="recruitBody">
+    <div class="sectionTitle">⚔️ Metas (recrutar até)</div>
+    <div id="unitTargets"></div>
+
+    <div class="hint">Meta 0 desativa a unidade.</div>
+
+    <div class="divider"></div>
+
+    <div class="row2">
+      <label>Qtd por ciclo:</label>
+      <input type="number" id="quantidadeRecrutar" value="1" min="1">
     </div>
+
+    <div class="row2">
+      <label>Reload (min):</label>
+      <input type="number" id="tempoReloadMin" value="10" min="1">
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="sectionTitle">Reserva Recursos</div>
+    <div class="row2"><label>Madeira</label><input type="number" id="reservaMadeira" value="0" min="0"></div>
+    <div class="row2"><label>Argila</label><input type="number" id="reservaArgila" value="0" min="0"></div>
+    <div class="row2"><label>Ferro</label><input type="number" id="reservaFerro" value="0" min="0"></div>
+
+    <div class="divider"></div>
+
+    <div class="sectionTitle">Reserva Fazenda</div>
+    <div class="row2"><label>Pop livre:</label><input type="number" id="reservaFazenda" value="0" min="0"></div>
+
+    <div class="hint">Fila total máx: <b>${LIMITE_FILA_TOTAL}</b></div>
+
+    <button id="saveSettings">💾 Salvar Configurações</button>
+    <div id="savedToast">Configurações salvas!</div>
+
+    <div id="recruitStatusBox"></div>
+  </div>
+</div>
   `);
 
   // Eventos UI
@@ -537,24 +638,96 @@
 
   $('#saveSettings').on('click', salvarConfiguracoes);
 
-  // Drag corpo
+  // =======================
+  // DRAG + SNAP NAS BORDAS
+  // =======================
+  const SNAP_PX = 18;
+  const MARGIN = 6;
+
   let isDragging = false, offsetX = 0, offsetY = 0;
+
   $('#recruitBody').on('mousedown', function (e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
     isDragging = true;
+
     const $panel = $('#recruitPanel');
-    offsetX = e.clientX - $panel.offset().left;
-    offsetY = e.clientY - $panel.offset().top;
+    const off = $panel.offset();
+    offsetX = e.clientX - off.left;
+    offsetY = e.clientY - off.top;
+
+    $panel.removeClass('snapping');
   });
 
   $(document).on('mousemove', function (e) {
     if (!isDragging) return;
-    $('#recruitPanel').css({ left: e.clientX - offsetX, top: e.clientY - offsetY, position: 'fixed' });
+
+    const $panel = $('#recruitPanel');
+    const w = $panel.outerWidth();
+    const h = $panel.outerHeight();
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = e.clientX - offsetX;
+    let top  = e.clientY - offsetY;
+
+    left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
+    top  = Math.max(MARGIN, Math.min(top,  vh - h - MARGIN));
+
+    $panel.css({ left, top, position: 'fixed' });
   }).on('mouseup', function () {
+    if (!isDragging) return;
     isDragging = false;
+
+    const $panel = $('#recruitPanel');
+    const w = $panel.outerWidth();
+    const h = $panel.outerHeight();
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const leftNow = parseFloat($panel.css('left')) || 0;
+    const topNow  = parseFloat($panel.css('top')) || 0;
+
+    const distL = leftNow;
+    const distT = topNow;
+    const distR = (vw - w) - leftNow;
+    const distB = (vh - h) - topNow;
+
+    let left = leftNow;
+    let top  = topNow;
+
+    if (distL <= SNAP_PX) left = MARGIN;
+    else if (distR <= SNAP_PX) left = (vw - w - MARGIN);
+
+    if (distT <= SNAP_PX) top = MARGIN;
+    else if (distB <= SNAP_PX) top = (vh - h - MARGIN);
+
+    $panel.addClass('snapping');
+    $panel.css({ left, top });
+
+    setTimeout(() => $panel.removeClass('snapping'), 160);
   });
 
-  // ======= START =======
+  $(window).on('resize', function () {
+    const $panel = $('#recruitPanel');
+    const w = $panel.outerWidth();
+    const h = $panel.outerHeight();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = parseFloat($panel.css('left')) || 10;
+    let top  = parseFloat($panel.css('top')) || 60;
+
+    left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
+    top  = Math.max(MARGIN, Math.min(top,  vh - h - MARGIN));
+
+    $panel.css({ left, top });
+  });
+
+  // =======================
+  // START
+  // =======================
   $(document).ready(function () {
     renderTargets();
     carregarConfiguracoes();
