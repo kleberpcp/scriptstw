@@ -2,7 +2,7 @@
 // @name         Mult Manager
 // @namespace    http://tampermonkey.net/
 // @author       Tito
-// @version      1.0.7
+// @version      1.0.8
 // @description  Mult Manager para Tribal Wars: rotação de páginas com tempos fracionados e alertas via Discord.
 // @match        https://*.tribalwars.com.br/game.php*
 // @downloadURL    https://github.com/kleberpcp/scriptstw/blob/master/multi-manager.user.js
@@ -13,6 +13,7 @@
 // @run-at       document-end
 // ==/UserScript==
 
+// MM
 (function(){
   'use strict';
 
