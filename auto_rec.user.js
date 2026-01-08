@@ -1,59 +1,45 @@
 // ==UserScript==
-// @name         Auto Recrutamento (PHX)
-// @version      1.0.2
-// @description  Metas + reservas + UI compacta + limite de 2 filas por prédio (Quartel/Estábulo/Oficina) — SEM recrutamento infinito (fila detectada por texto)
+// @name         Auto Recrutamento
+// @version      1.0
+// @description  Recrutamento automático PHX bot com reservas + reserva de fazenda e metas por aldeia + limite TOTAL de fila 2 + limite 2 por unidade + UI compacta recolher/expandir
 // @author       Phoenix
-// @include      https://*.tribalwars.com.br/game.php?*screen=train*
-// @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass*
-// @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass_decommission*
+// @include      https://*.*.*.*&screen=train**
+// @include      https://*.*.*.*&screen=stable**
+// @include      https://*.*.*.*&screen=barracks**
+// @exclude      https://*.*.*.*&screen=train&mode=mass**
+// @exclude      https://*.*.*.*&screen=train&mode=mass_decommission**
+// @include      https://*.tribalwars.com.br/game.php?screen=train&t=*&village=*
+// @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
+// @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
 // @require      https://code.jquery.com/jquery-2.2.4.min.js
 // @run-at       document-end
 // ==/UserScript==
-
 (function () {
   'use strict';
 
   // =======================
-  // CONFIG
+  // CONFIG GERAL
   // =======================
-  const MAX_FILAS_POR_PREDIO = 2;   // ✅ 2 filas no Quartel + 2 no Estábulo + 2 na Oficina
-  const LOOP_MS = 3500;
+  const LIMITE_FILA_TOTAL = 2;
+  const LOOP_MS = 4000;
 
   const villageId = new URLSearchParams(location.search).get('village') || '0';
 
-  const UNITS = [
-    // Quartel
-    { key: "spear",    label: "Lança",        icon: "/graphic/unit/unit_spear.png",    group: "barracks" },
-    { key: "sword",    label: "Espada",       icon: "/graphic/unit/unit_sword.png",    group: "barracks" },
-    { key: "axe",      label: "Bárbaro",      icon: "/graphic/unit/unit_axe.png",      group: "barracks" },
-
-    // Estábulo
-    { key: "spy",      label: "Explorador",   icon: "/graphic/unit/unit_spy.png",      group: "stable" },
-    { key: "light",    label: "Cav. Leve",    icon: "/graphic/unit/unit_light.png",    group: "stable" },
-    { key: "heavy",    label: "Cav. Pesada",  icon: "/graphic/unit/unit_heavy.png",    group: "stable" },
-
-    // Oficina
-    { key: "ram",      label: "Ariete",       icon: "/graphic/unit/unit_ram.png",      group: "garage" },
-    { key: "catapult", label: "Catapulta",    icon: "/graphic/unit/unit_catapult.png", group: "garage" },
+  const unitOrder = [
+    { key: "spear",    label: "Lança",        icon: "/graphic/unit/unit_spear.png" },
+    { key: "sword",    label: "Espada",       icon: "/graphic/unit/unit_sword.png" },
+    { key: "axe",      label: "Bárbaro",      icon: "/graphic/unit/unit_axe.png" },
+    { key: "spy",      label: "Explorador",   icon: "/graphic/unit/unit_spy.png" },
+    { key: "light",    label: "Cav. Leve",    icon: "/graphic/unit/unit_light.png" },
+    { key: "heavy",    label: "Cav. Pesada",  icon: "/graphic/unit/unit_heavy.png" },
+    { key: "ram",      label: "Ariete",       icon: "/graphic/unit/unit_ram.png" },
+    { key: "catapult", label: "Catapulta",    icon: "/graphic/unit/unit_catapult.png" },
   ];
 
-  const UNIT_BY_KEY = Object.fromEntries(UNITS.map(u => [u.key, u]));
   const popPerUnit = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:8 };
 
-  // ✅ Mapeamento robusto por texto (PT-BR)
-  const QUEUE_TEXT_MATCH = [
-    { key: "spear",    re: /\blanceiro\b/i },
-    { key: "sword",    re: /\bespadach/i },
-    { key: "axe",      re: /\b(bárbaro|barbaro)\b/i },
-    { key: "spy",      re: /\bexplorador\b/i },
-    { key: "light",    re: /\bcavalaria\s+leve\b/i },
-    { key: "heavy",    re: /\bcavalaria\s+pesada\b/i },
-    { key: "ram",      re: /\b(ariete|aríete)\b/i },
-    { key: "catapult", re: /\bcatapulta\b/i },
-  ];
-
   // =======================
-  // STATE (por aldeia)
+  // CONFIG POR ALDEIA (localStorage)
   // =======================
   let quantidadePorCiclo = 1;
   let tempoReloadMin = 10;
@@ -65,7 +51,7 @@
 
   let metas = { spear:0, sword:0, axe:0, spy:0, light:0, heavy:0, ram:0, catapult:0 };
 
-  let lastSuccess = null;
+  let lastSuccess = null; // {time, text}
   let reloadInterval = null;
 
   // =======================
@@ -77,7 +63,7 @@
   }
 
   function parseIntTW(t) {
-    return parseInt(String(t || "0").replace(/\./g,'').replace(/\s/g,''), 10) || 0;
+    return parseInt(String(t || "0").replace(/\./g, '').replace(/\s/g, ''), 10) || 0;
   }
 
   function getResources() {
@@ -92,17 +78,6 @@
     const cur = parseIntTW($("#pop_current_label").text());
     const max = parseIntTW($("#pop_max_label").text());
     return { cur, max, free: Math.max(0, max - cur) };
-  }
-
-  function getBudget() {
-    const res = getResources();
-    const pop = getPopInfo();
-    return {
-      wood:  Math.max(0, res.wood  - reservaMadeira),
-      stone: Math.max(0, res.stone - reservaArgila),
-      iron:  Math.max(0, res.iron  - reservaFerro),
-      pop:   Math.max(0, pop.free  - reservaFazenda),
-    };
   }
 
   function getUnitInput(unitKey) {
@@ -127,13 +102,64 @@
     const $row = $input.closest('tr');
     if (!$row.length) return 0;
 
-    const txt = $row.text();
-    const m = txt.match(/(\d+)\s*\/\s*(\d+)/);
-    return m ? (parseInt(m[1], 10) || 0) : 0;
+    const textRow = $row.text();
+    const m = textRow.match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) return parseInt(m[1], 10) || 0;
+
+    return 0;
+  }
+
+  // =======================
+  // FILA (contagem + por unidade)
+  // =======================
+  function getQueueRows() {
+    const $cancels = $(`a, button, input[type="submit"], input[type="button"]`).filter(function () {
+      const t = ($(this).text() || $(this).val() || '').trim().toLowerCase();
+      return t === 'cancelar';
+    });
+
+    const rows = [];
+    $cancels.each(function () {
+      const $tr = $(this).closest('tr');
+      if ($tr.length) rows.push($tr.get(0));
+    });
+
+    const unique = [...new Set(rows)];
+    return $(unique);
+  }
+
+  function getQueueTotalCount() {
+    return getQueueRows().length || 0;
+  }
+
+  function getQueuedCountByUnit(unitKey) {
+    const $rows = getQueueRows();
+    if (!$rows.length) return 0;
+
+    let count = 0;
+    $rows.each(function () {
+      const $tr = $(this);
+      const $img = $tr.find('img').first();
+      const src = ($img.attr('src') || '').toLowerCase();
+      const alt = ($img.attr('alt') || '').toLowerCase();
+      const title = ($img.attr('title') || '').toLowerCase();
+      const txt = $tr.text().toLowerCase();
+
+      const hit =
+        src.includes(`unit_${unitKey}`) ||
+        src.includes(`/${unitKey}.`) ||
+        alt.includes(unitKey) ||
+        title.includes(unitKey) ||
+        txt.includes(unitKey);
+
+      if (hit) count++;
+    });
+
+    return count;
   }
 
   function clearAllInputs() {
-    for (const u of UNITS) {
+    for (const u of unitOrder) {
       const $in = getUnitInput(u.key);
       if ($in.length) $in.val('').trigger('input').trigger('change');
     }
@@ -153,11 +179,14 @@
       return true;
     }
 
-    const el = $form.get(0);
-    if (!el) return false;
+    const formEl = $form.get(0);
+    if (!formEl) return false;
 
-    if (typeof el.requestSubmit === 'function') { el.requestSubmit(); return true; }
-    try { el.submit(); return true; } catch { return false; }
+    if (typeof formEl.requestSubmit === 'function') {
+      formEl.requestSubmit();
+      return true;
+    }
+    try { formEl.submit(); return true; } catch (e) { return false; }
   }
 
   function canAddUnit(unitKey, qtd, budget) {
@@ -182,7 +211,6 @@
 
     const maxAttr = parseInt($in.attr('max'), 10);
     if (!isNaN(maxAttr) && maxAttr > 0) qtd = Math.min(qtd, maxAttr);
-
     if (qtd <= 0) return 0;
 
     $in.val(qtd).trigger('input').trigger('change').trigger('blur');
@@ -190,87 +218,55 @@
   }
 
   // =======================
-  // ✅ FILA: pega linhas e identifica unidade PELO TEXTO
-  // =======================
-  function getQueueRows() {
-    // cada linha da fila tem um botão/link "Cancelar"
-    const $cancels = $(`a, button, input[type="submit"], input[type="button"]`).filter(function () {
-      const t = ($(this).text() || $(this).val() || '').trim().toLowerCase();
-      return t === 'cancelar';
-    });
-
-    const rows = [];
-    $cancels.each(function () {
-      const $tr = $(this).closest('tr');
-      if ($tr.length) rows.push($tr.get(0));
-    });
-
-    return $([...new Set(rows)]);
-  }
-
-  function detectUnitKeyFromQueueRow($tr) {
-    // texto costuma ser tipo: "1 Lanceiro" / "1 Cavalaria leve"
-    const txt = ($tr.text() || '').toLowerCase();
-
-    for (const m of QUEUE_TEXT_MATCH) {
-      if (m.re.test(txt)) return m.key;
-    }
-    return null;
-  }
-
-  function getQueueCountByGroup() {
-    const counts = { barracks: 0, stable: 0, garage: 0 };
-
-    const $rows = getQueueRows();
-    $rows.each(function () {
-      const key = detectUnitKeyFromQueueRow($(this));
-      if (!key) return;
-      const g = (UNIT_BY_KEY[key] || {}).group;
-      if (!g) return;
-      counts[g] += 1;
-    });
-
-    return counts;
-  }
-
-  // =======================
-  // ✅ CORE: respeita 2 filas por prédio
-  // (na tela combinada, pode preencher quartel + estábulo + oficina no mesmo submit)
+  // CORE: preenche até 2 na fila em 1 submit
   // =======================
   function tentativaDeRecrutamento() {
     if (!/screen=train/.test(location.href)) return;
 
-    const queueByGroup = getQueueCountByGroup();
+    const filaAtual = getQueueTotalCount();
+    if (filaAtual >= LIMITE_FILA_TOTAL) return;
 
-    const freeSlots = {
-      barracks: Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.barracks),
-      stable:   Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.stable),
-      garage:   Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.garage),
+    const slotsLivresNaFila = LIMITE_FILA_TOTAL - filaAtual;
+    if (slotsLivresNaFila <= 0) return;
+
+    const res = getResources();
+    const pop = getPopInfo();
+
+    const budget = {
+      wood:  Math.max(0, res.wood  - reservaMadeira),
+      stone: Math.max(0, res.stone - reservaArgila),
+      iron:  Math.max(0, res.iron  - reservaFerro),
+      pop:   Math.max(0, pop.free  - reservaFazenda),
     };
 
-    if ((freeSlots.barracks + freeSlots.stable + freeSlots.garage) <= 0) return;
-
-    const budget = getBudget();
     clearAllInputs();
 
-    let algo = false;
-    const desc = [];
+    let slotsRestantes = slotsLivresNaFila;
+    let algoPreenchido = false;
+    const filledDesc = [];
 
-    for (const u of UNITS) {
-      const meta = parseInt(metas[u.key] || 0, 10);
-      if (!meta || meta <= 0) continue;
+    for (const u of unitOrder) {
+      if (slotsRestantes <= 0) break;
+
+      const target = parseInt(metas[u.key] || 0, 10);
+      if (!target || target <= 0) continue;
 
       const $in = getUnitInput(u.key);
-      if (!$in.length) continue; // não disponível na tela
-
-      const g = u.group;
-      if (freeSlots[g] <= 0) continue; // ✅ prédio cheio (2 filas)
+      if (!$in.length) continue;
 
       const atual = getCurrentUnitCount(u.key);
-      if (atual >= meta) continue;
+      const naFilaUnid = getQueuedCountByUnit(u.key);
+      const totalEstimado = atual + naFilaUnid;
 
-      const falta = meta - atual;
-      let qtd = Math.min(Math.max(1, quantidadePorCiclo), falta);
+      if (totalEstimado >= target) continue;
+
+      const faltaParaMeta = target - totalEstimado;
+
+      let qtd = Math.min(
+        faltaParaMeta,
+        slotsRestantes,
+        Math.max(1, quantidadePorCiclo)
+      );
 
       while (qtd > 0 && !canAddUnit(u.key, qtd, budget)) qtd--;
       if (qtd <= 0) continue;
@@ -284,29 +280,27 @@
       budget.iron  -= cost.iron  * applied;
       budget.pop   -= (popPerUnit[u.key] || 0) * applied;
 
-      freeSlots[g] -= 1; // ✅ 1 unidade preenchida = 1 fila adicionada naquele prédio
-      algo = true;
-      desc.push(`${u.label} x${applied}`);
-
-      if ((freeSlots.barracks + freeSlots.stable + freeSlots.garage) <= 0) break;
+      slotsRestantes -= applied;
+      algoPreenchido = true;
+      filledDesc.push(`${u.label} x${applied}`);
     }
 
-    if (!algo) return;
+    if (!algoPreenchido) return;
 
     const ok = submitRecruitForm();
     if (ok) {
-      lastSuccess = { time: nowStr(), text: desc.join(' + ') };
-      renderStatus(queueByGroup);
+      lastSuccess = { time: nowStr(), text: filledDesc.join(' + ') };
+      renderStatus();
     }
   }
 
   // =======================
-  // UI
+  // UI (pixel perfect + foco suave + snap bordas + toast salvo)
   // =======================
   function renderTargets() {
     const $wrap = $('#unitTargets');
     $wrap.empty();
-    for (const u of UNITS) {
+    for (const u of unitOrder) {
       $wrap.append(`
         <div class="unit-option">
           <img src="${u.icon}">
@@ -317,13 +311,13 @@
     }
   }
 
-  function renderStatus(queueOverride) {
+  function renderStatus() {
     const $box = $('#recruitStatusBox');
     if (!$box.length) return;
 
     const pop = getPopInfo();
     const res = getResources();
-    const q = queueOverride || getQueueCountByGroup();
+    const fila = getQueueTotalCount();
 
     let html = `
       <div style="font-weight:bold; margin-bottom:6px;">📌 Status</div>
@@ -331,11 +325,7 @@
         <div>🏚️ <b>${villageId}</b></div>
         <div>👥 <b>${pop.cur}</b>/<b>${pop.max}</b> (Livre: <b>${pop.free}</b>, Res.: <b>${reservaFazenda}</b>)</div>
         <div>🪵 ${res.wood} | 🧱 ${res.stone} | ⛓️ ${res.iron}</div>
-        <div style="margin-top:6px;">
-          🏰 Quartel: <b>${q.barracks}</b>/<b>${MAX_FILAS_POR_PREDIO}</b>
-          • 🐎 Estábulo: <b>${q.stable}</b>/<b>${MAX_FILAS_POR_PREDIO}</b>
-          • 🛠️ Oficina: <b>${q.garage}</b>/<b>${MAX_FILAS_POR_PREDIO}</b>
-        </div>
+        <div>⏳ Fila: <b>${fila}</b> / <b>${LIMITE_FILA_TOTAL}</b></div>
       </div>
     `;
 
@@ -353,6 +343,7 @@
     $box.html(html);
   }
 
+  // ✅ Toast que você gostava: "Configurações salvas!"
   function showSavedToast() {
     const $t = $('#savedToast');
     if (!$t.length) return;
@@ -382,14 +373,25 @@
     reservaFerro   = parseInt($('#reservaFerro').val(), 10) || 0;
     reservaFazenda = parseInt($('#reservaFazenda').val(), 10) || 0;
 
-    for (const u of UNITS) metas[u.key] = parseInt($(`#meta_${u.key}`).val(), 10) || 0;
+    for (const u of unitOrder) {
+      metas[u.key] = parseInt($(`#meta_${u.key}`).val(), 10) || 0;
+    }
 
-    localStorage.setItem(
-      `configuracoesRecrutamento_${villageId}`,
-      JSON.stringify({ quantidadePorCiclo, tempoReloadMin, reservaMadeira, reservaArgila, reservaFerro, reservaFazenda, metas })
-    );
+    const conf = {
+      quantidadePorCiclo,
+      tempoReloadMin,
+      reservaMadeira,
+      reservaArgila,
+      reservaFerro,
+      reservaFazenda,
+      metas
+    };
 
+    localStorage.setItem(`configuracoesRecrutamento_${villageId}`, JSON.stringify(conf));
+
+    // ✅ REVERTE APENAS ESTA FUNCIONALIDADE (toast)
     showSavedToast();
+
     restartReloadTimer();
     renderStatus();
   }
@@ -419,7 +421,9 @@
       $('#reservaFerro').val(reservaFerro);
       $('#reservaFazenda').val(reservaFazenda);
 
-      for (const u of UNITS) $(`#meta_${u.key}`).val(parseInt(metas[u.key] || 0, 10));
+      for (const u of unitOrder) {
+        $(`#meta_${u.key}`).val(parseInt(metas[u.key] || 0, 10));
+      }
 
       const collapsed = localStorage.getItem(`recruit_ui_collapsed_${villageId}`) === '1';
       setCollapsed(collapsed, false);
@@ -429,7 +433,7 @@
   }
 
   // =======================
-  // UI INJECT (mesma estética)
+  // INJETAR UI
   // =======================
   $('body').append(`
 <style>
@@ -439,80 +443,110 @@
     --phx-border: #8b5c2f;
     --phx-text: #3b1f0e;
     --phx-shadow: 2px 2px 5px rgba(0,0,0,.18);
+
     --phx-input-bg: rgba(255,255,255,0.22);
     --phx-input-border: rgba(139,92,47,0.40);
     --phx-input-focus-ring: rgba(139,92,47,0.14);
+
     --phx-panel-w: 270px;
     --phx-input-w: 64px;
     --phx-gap: 8px;
     --phx-icon-w: 18px;
   }
 
-  #recruitPanel{ position:fixed; top:60px; left:10px; width:var(--phx-panel-w); z-index:9999; font-family:Verdana,sans-serif; color:var(--phx-text); }
-  #recruitToggleHeader{
-    background:linear-gradient(180deg,#e6cfa1,#d7bc8c);
-    border:2px solid var(--phx-border);
-    border-radius:12px;
-    padding:7px 10px;
-    font-weight:bold;
-    cursor:pointer;
-    box-shadow:var(--phx-shadow);
-    display:flex; align-items:center; justify-content:space-between;
-    user-select:none;
-  }
-  #recruitToggleHeader .chev{ font-size:11px; padding:2px 7px; border-radius:999px; border:1px solid rgba(139,92,47,.4); background:rgba(255,255,255,.18); }
-  #recruitBody{
-    margin-top:8px;
-    background:linear-gradient(180deg,var(--phx-bg),var(--phx-bg2));
-    padding:10px;
-    border:2px solid var(--phx-border);
-    border-radius:12px;
-    box-shadow:var(--phx-shadow);
-    cursor:move;
+  #recruitPanel{
+    position: fixed;
+    top: 60px;
+    left: 10px;
+    width: var(--phx-panel-w);
+    z-index: 9999;
+    font-family: Verdana, sans-serif;
+    color: var(--phx-text);
   }
 
+  #recruitToggleHeader{
+    background: linear-gradient(180deg,#e6cfa1,#d7bc8c);
+    border: 2px solid var(--phx-border);
+    border-radius: 12px;
+    padding: 7px 10px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: var(--phx-shadow);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    user-select:none;
+  }
+
+  #recruitToggleHeader .chev{
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid rgba(139,92,47,.4);
+    background: rgba(255,255,255,.18);
+  }
+
+  #recruitBody{
+    margin-top: 8px;
+    background: linear-gradient(180deg,var(--phx-bg),var(--phx-bg2));
+    padding: 10px;
+    border: 2px solid var(--phx-border);
+    border-radius: 12px;
+    box-shadow: var(--phx-shadow);
+    cursor: move;
+  }
+
+  .sectionTitle{ font-weight:bold; font-size:12px; margin:2px 0 8px; }
   .divider{ height:1px; background:rgba(139,92,47,.35); margin:10px 0; }
   .hint{ font-size:11px; opacity:.85; margin-top:4px; }
-  .sectionTitle{ font-weight:bold; font-size:12px; margin:0 0 8px; }
 
   .unit-option{
     display:grid;
-    grid-template-columns:var(--phx-icon-w) 1fr var(--phx-input-w);
-    column-gap:var(--phx-gap);
+    grid-template-columns: var(--phx-icon-w) 1fr var(--phx-input-w);
+    column-gap: var(--phx-gap);
     align-items:center;
     margin-bottom:6px;
   }
   .unit-option img{ width:var(--phx-icon-w); height:var(--phx-icon-w); }
-  .unit-option span{ font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .unit-option span{
+    font-size:12px;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
 
   .row2{
     display:grid;
-    grid-template-columns:1fr var(--phx-input-w);
-    column-gap:var(--phx-gap);
+    grid-template-columns: 1fr var(--phx-input-w);
+    column-gap: var(--phx-gap);
     align-items:center;
     margin:6px 0;
     font-size:12px;
   }
 
   #recruitPanel input[type="number"]{
-    width:var(--phx-input-w);
-    justify-self:end;
+    width: var(--phx-input-w);
+    justify-self: end;
     padding:4px 6px;
     font-size:12px;
     border-radius:8px;
     border:1px solid var(--phx-input-border);
-    background:var(--phx-input-bg);
-    color:var(--phx-text);
+    background: var(--phx-input-bg);
+    color: var(--phx-text);
     text-align:right;
-    box-shadow:inset 0 1px 1px rgba(0,0,0,.06);
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.06);
     outline:none;
-    transition:background .15s ease, box-shadow .15s ease, border-color .15s ease;
+    transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
   }
+
   #recruitPanel input[type="number"]:focus{
-    background:rgba(255,255,255,0.30);
-    border-color:rgba(139,92,47,.70);
-    box-shadow:inset 0 1px 2px rgba(0,0,0,.08), 0 0 0 2px var(--phx-input-focus-ring);
+    background: rgba(255,255,255,0.30);
+    border-color: rgba(139,92,47,.70);
+    box-shadow:
+      inset 0 1px 2px rgba(0,0,0,.08),
+      0 0 0 2px var(--phx-input-focus-ring);
   }
+
   input[type="number"]::-webkit-inner-spin-button,
   input[type="number"]::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
   input[type="number"]{ -moz-appearance:textfield; }
@@ -523,23 +557,32 @@
     padding:8px 10px;
     border-radius:12px;
     border:1px solid var(--phx-border);
-    background:linear-gradient(180deg,#e2c89b,#d6b888);
+    background: linear-gradient(180deg,#e2c89b,#d6b888);
     font-weight:bold;
     cursor:pointer;
-    box-shadow:0 2px 0 rgba(139,92,47,.35), 0 5px 10px rgba(0,0,0,.12);
+    box-shadow: 0 2px 0 rgba(139,92,47,.35), 0 5px 10px rgba(0,0,0,.12);
   }
-  #savedToast{ display:none; margin-top:8px; font-size:12px; font-weight:bold; color:#0a7a20; }
+
+  #savedToast{
+    display:none;
+    margin-top:8px;
+    font-size:12px;
+    font-weight:bold;
+    color:#0a7a20;
+  }
 
   #recruitStatusBox{
     margin-top:10px;
     padding:8px;
     border:1px dashed rgba(139,92,47,.6);
     border-radius:10px;
-    background:rgba(255,255,255,.28);
+    background: rgba(255,255,255,.28);
     font-size:12px;
   }
 
   #recruitPanel.collapsed #recruitBody{ display:none; }
+
+  #recruitPanel.snapping{ transition: left 120ms ease, top 120ms ease; }
 </style>
 
 <div id="recruitPanel">
@@ -568,17 +611,17 @@
 
     <div class="divider"></div>
 
-    <div class="sectionTitle" style="font-size:12px;">Reserva Recursos</div>
+    <div class="sectionTitle">Reserva Recursos</div>
     <div class="row2"><label>Madeira</label><input type="number" id="reservaMadeira" value="0" min="0"></div>
     <div class="row2"><label>Argila</label><input type="number" id="reservaArgila" value="0" min="0"></div>
     <div class="row2"><label>Ferro</label><input type="number" id="reservaFerro" value="0" min="0"></div>
 
     <div class="divider"></div>
 
-    <div class="sectionTitle" style="font-size:12px;">Reserva Fazenda</div>
+    <div class="sectionTitle">Reserva Fazenda</div>
     <div class="row2"><label>Pop livre:</label><input type="number" id="reservaFazenda" value="0" min="0"></div>
 
-    <div class="hint">Limite: <b>${MAX_FILAS_POR_PREDIO}</b> filas por prédio (Quartel/Estábulo/Oficina).</div>
+    <div class="hint">Fila total máx: <b>${LIMITE_FILA_TOTAL}</b></div>
 
     <button id="saveSettings">💾 Salvar Configurações</button>
     <div id="savedToast">Configurações salvas!</div>
@@ -588,31 +631,41 @@
 </div>
   `);
 
-  // UI events
+  // Eventos UI
   $('#recruitToggleHeader').on('click', function () {
     const collapsed = $('#recruitPanel').hasClass('collapsed');
     setCollapsed(!collapsed, true);
   });
+
   $('#saveSettings').on('click', salvarConfiguracoes);
 
-  // drag
+  // =======================
+  // DRAG + SNAP NAS BORDAS
+  // =======================
+  const SNAP_PX = 18;
   const MARGIN = 6;
+
   let isDragging = false, offsetX = 0, offsetY = 0;
 
   $('#recruitBody').on('mousedown', function (e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'LABEL') return;
     isDragging = true;
+
     const $panel = $('#recruitPanel');
     const off = $panel.offset();
     offsetX = e.clientX - off.left;
     offsetY = e.clientY - off.top;
+
+    $panel.removeClass('snapping');
   });
 
   $(document).on('mousemove', function (e) {
     if (!isDragging) return;
+
     const $panel = $('#recruitPanel');
     const w = $panel.outerWidth();
     const h = $panel.outerHeight();
+
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
@@ -623,9 +676,59 @@
     top  = Math.max(MARGIN, Math.min(top,  vh - h - MARGIN));
 
     $panel.css({ left, top, position: 'fixed' });
-  }).on('mouseup', function () { isDragging = false; });
+  }).on('mouseup', function () {
+    if (!isDragging) return;
+    isDragging = false;
 
-  // start
+    const $panel = $('#recruitPanel');
+    const w = $panel.outerWidth();
+    const h = $panel.outerHeight();
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    const leftNow = parseFloat($panel.css('left')) || 0;
+    const topNow  = parseFloat($panel.css('top')) || 0;
+
+    const distL = leftNow;
+    const distT = topNow;
+    const distR = (vw - w) - leftNow;
+    const distB = (vh - h) - topNow;
+
+    let left = leftNow;
+    let top  = topNow;
+
+    if (distL <= SNAP_PX) left = MARGIN;
+    else if (distR <= SNAP_PX) left = (vw - w - MARGIN);
+
+    if (distT <= SNAP_PX) top = MARGIN;
+    else if (distB <= SNAP_PX) top = (vh - h - MARGIN);
+
+    $panel.addClass('snapping');
+    $panel.css({ left, top });
+
+    setTimeout(() => $panel.removeClass('snapping'), 160);
+  });
+
+  $(window).on('resize', function () {
+    const $panel = $('#recruitPanel');
+    const w = $panel.outerWidth();
+    const h = $panel.outerHeight();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    let left = parseFloat($panel.css('left')) || 10;
+    let top  = parseFloat($panel.css('top')) || 60;
+
+    left = Math.max(MARGIN, Math.min(left, vw - w - MARGIN));
+    top  = Math.max(MARGIN, Math.min(top,  vh - h - MARGIN));
+
+    $panel.css({ left, top });
+  });
+
+  // =======================
+  // START
+  // =======================
   $(document).ready(function () {
     renderTargets();
     carregarConfiguracoes();
