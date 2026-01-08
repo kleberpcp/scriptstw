@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Mult Manager
 // @namespace    http://tampermonkey.net/
-// @version      1.0.6
+// @version      1.0.6b
 // @description  Mult Manager para Tribal Wars: rotação de páginas com tempos fracionados e alertas via Discord.
 // @match        https://*.tribalwars.com.br/game.php*
 // @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/multi-manager.user.js
@@ -571,7 +571,7 @@
 
     // Páginas (setup padrão apenas no 1º uso – ver init abaixo)
     edp:{enabled:true,minutes:3},                 // Construir
-    scave:{enabled:true,minutes:1.5},             // Coletar
+    scave:{enabled:true,minutes:1.5,mass:false},             // Coletar
     recrut:{enabled:true,minutes:0.5},            // Recrutar
     exchange:{enabled:true,minutes:10,villages:[]}, // Comprar (coord será preenchida no 1º uso)
 
@@ -690,7 +690,7 @@
 
   const PAGE_DEFS={
     farm:    { name:'Farm',      check:()=>isScreen('am_farm'), url:'game.php?screen=am_farm' },
-    scave:   { name:'Coleta',    check:()=>isScreen('place','scavenge_mass'), url:'game.php?screen=place&mode=scavenge_mass' },
+    scave:   { name:'Coleta',    check:()=> (isScreen('place','scavenge') || isScreen('place','scavenge_mass')), url:'game.php?screen=place&mode=scavenge' },
     balance: { name:'Balancear', check:()=>isScreen('info_player'), url:'game.php?screen=info_player' },
     store:   { name:'Geral',     check:()=>isScreen('overview_villages','prod'), url:'game.php?screen=overview_villages&mode=prod' },
     recrut:  { name:'Recrutar',  check:()=>isScreen('train'), url:'game.php?screen=train' },
@@ -699,6 +699,16 @@
     snob:    { name:'Cunhar',   check:()=>isScreen('snob'), url:'game.php?screen=snob' }
   };
   const ALL_KEYS = Object.keys(PAGE_DEFS);
+
+  // --- COLETA (S/M) ---
+  function getScaveMode(){ return (config && config.scave && config.scave.mass) ? 'M' : 'S'; }
+  function getScaveQueryParams(){ return (getScaveMode()==='M') ? 'screen=place&mode=scavenge_mass' : 'screen=place&mode=scavenge'; }
+  function pageName(key){
+    if(!key || !PAGE_DEFS[key]) return String(key || '');
+    if(key === 'scave') return `Coleta (${getScaveMode()})`;
+    return PAGE_DEFS[key].name;
+  }
+
 
   function loadSelected(){ const raw=localStorage.getItem(SELECTED_KEY); try{ const arr=raw?JSON.parse(raw):[]; return Array.isArray(arr)?arr.filter(k=>ALL_KEYS.includes(k)):[]; }catch{ return []; } }
   function saveSelected(arr){ localStorage.setItem(SELECTED_KEY, JSON.stringify(arr)); }
@@ -724,9 +734,17 @@
   function pageUrl(key){
     const def = PAGE_DEFS[key];
     const vid = getVillageId();
-    const parts = def.url.split('?');
-    const queryParams = parts[1] || '';
+
+    let queryParams = '';
+    if (key === 'scave') {
+      queryParams = getScaveQueryParams();
+    } else {
+      const parts = def.url.split('?');
+      queryParams = parts[1] || '';
+    }
+
     if (vid) return location.origin + '/game.php?village=' + vid + '&' + queryParams;
+    if (key === 'scave') return location.origin + '/game.php?' + queryParams;
     return location.origin + '/' + def.url;
   }
 
@@ -828,7 +846,7 @@ function checkExchangeRotation(remainingMs){
     if(parseInt(localStorage.getItem(CAP_EVENT_KEY)||'0',10)!==now) return;
 
     const cur=getCurrentKey();
-    const pageName = (cur? PAGE_DEFS[cur].name : '(fora de destino)');
+    const pageName = (cur? pageName(cur) : '(fora de destino)');
     const details = [
       `📄 Página: **${pageName}**`,
       (reason ? `📝 Obs: ${reason}` : '')
@@ -865,6 +883,9 @@ function checkExchangeRotation(remainingMs){
       .mm-subtoggle{display:flex;align-items:center;gap:4px;margin-bottom:2px;padding-left:0;}
       .mm-goto{flex:1;min-width:56px;font-size:13px;background:#232323;border:1.25px solid ${COLORS.btnBorder};border-radius:7px;color:#f2f2f2;font-weight:700;cursor:pointer;padding:2px 12px;margin:0 6px;box-shadow:0 1.2px 3px #0007,0 .5px 0 #444 inset;transition:background .16s,color .15s,border .13s, box-shadow .15s; user-select:none}
       .mm-goto:hover{background:#181818;color:#9df47e;border-color:#494949;box-shadow:0 2px 6px #000b,0 0 0 1.25px #6fd9927a}
+      .mm-goto.mm-has-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px}
+      .mm-mode-toggle{font-size:14px;line-height:14px;padding:0 6px;border-left:1px solid #444;opacity:.9;cursor:pointer;user-select:none}
+      .mm-mode-toggle:hover{opacity:1}
       .mm-onoff{display:inline-block;width:32px;height:18px;position:relative;vertical-align:middle}
       .mm-onoff input{display:none}
       .mm-slider{position:absolute;cursor:pointer;inset:0;background:#888;border-radius:18px;transition:.2s}
@@ -949,7 +970,13 @@ function checkExchangeRotation(remainingMs){
         row.className='mm-item';
         row.dataset.key = k;
         const chk = document.createElement('input'); chk.type='checkbox'; chk.id='mm-'+k; chk.checked=!!config[k]?.enabled;
-        const btn = document.createElement('button'); btn.className='mm-goto drag-handle'; btn.id='btn-'+k; btn.dataset.goto=k; btn.textContent=PAGE_DEFS[k].name;
+        const btn = document.createElement('button'); btn.className='mm-goto drag-handle'; btn.id='btn-'+k; btn.dataset.goto=k;
+        if (k === 'scave') {
+          btn.classList.add('mm-has-toggle');
+          btn.innerHTML = `<span>${pageName(k)}</span><span class="mm-mode-toggle" title="Alternar Coleta (S/M)">⇄</span>`;
+        } else {
+          btn.textContent = pageName(k);
+        }
         const min = document.createElement('input'); min.type='number'; min.step='0.5'; min.min='0.5'; min.className='mm-minput'; min.id='mm-'+k+'-min'; min.value=String(config[k]?.minutes ?? 1); // mantém valor válido para <input type="number"> (suporta frações)
         const rm  = document.createElement('button'); rm.className='mm-add'; rm.textContent='−'; rm.title='Remover'; rm.dataset.action='remove'; rm.dataset.key=k;
 
@@ -1164,7 +1191,7 @@ function checkExchangeRotation(remainingMs){
       const addRow = document.createElement('div'); addRow.className='mm-item'; addRow.dataset.key='';
       const select = document.createElement('select'); select.className='mm-select';
       const opt0 = document.createElement('option'); opt0.value=''; opt0.textContent='Escolher página…'; opt0.disabled=true; opt0.selected=true; select.appendChild(opt0);
-      remaining.forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=PAGE_DEFS[k].name; select.appendChild(o); });
+      remaining.forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=pageName(k); select.appendChild(o); });
       const addBtn = document.createElement('button'); addBtn.className='mm-add'; addBtn.textContent='+'; addBtn.title='Adicionar'; addBtn.dataset.action='add';
       addRow.append(select, addBtn);
       list.appendChild(addRow);
@@ -1185,6 +1212,23 @@ function checkExchangeRotation(remainingMs){
           const row = btn.closest('.mm-item'); row.setAttribute('draggable','true'); row.classList.add('drag-source');
         });
       });
+
+      // Toggle Coleta (S/M)
+      list.querySelectorAll('.mm-mode-toggle').forEach(tg=>{
+        tg.addEventListener('mousedown', (e)=>{ e.stopPropagation(); });
+        tg.addEventListener('click', (e)=>{
+          e.stopPropagation(); e.preventDefault();
+          if(!config.scave) config.scave = { enabled:true, minutes:1.5, mass:false };
+          config.scave.mass = !config.scave.mass;
+          saveConfig(config);
+          renderList();
+          // Se já estiver na página de Coleta, alterna a página imediatamente
+          if (getCurrentKey() === 'scave') {
+            location.href = pageUrl('scave');
+          }
+        });
+      });
+
       list.querySelectorAll('.mm-add').forEach(b=>{
         if(!b.dataset.action) return;
         b.onclick = (e)=>{
