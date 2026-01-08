@@ -6,8 +6,8 @@
 // @include      https://*.tribalwars.com.br/game.php?*screen=train*
 // @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass*
 // @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass_decommission*
-// @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
-// @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
+// @downloadURL    https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
+// @updateURL      https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
 // @require      https://code.jquery.com/jquery-2.2.4.min.js
 // @run-at       document-end
 // ==/UserScript==
