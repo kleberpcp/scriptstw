@@ -4,8 +4,8 @@
 // @version      1.0.5
 // @description  Mult Manager para Tribal Wars: rotação de páginas com tempos fracionados e alertas via Discord.
 // @match        https://*.tribalwars.com.br/game.php*
-// @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
-// @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
+// @downloadURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/multi-manager.user.js
+// @updateURL      https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/multi-manager.user.js
 // @grant        GM_xmlhttpRequest
 // @connect      discord.com
 // @run-at       document-end
