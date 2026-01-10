@@ -14,6 +14,7 @@
 // @require      https://code.jquery.com/jquery-2.2.4.min.js
 // @run-at       document-end
 // ==/UserScript==
+
 (function () {
   'use strict';
 
