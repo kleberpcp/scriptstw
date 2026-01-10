@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Auto Recrutamento
-// @version      1.0
+// @version      1.0.1
 // @description  Recrutamento automático PHX bot com reservas + reserva de fazenda e metas por aldeia + limite TOTAL de fila 2 + limite 2 por unidade + UI compacta recolher/expandir
 // @author       Phoenix
 // @include      https://*.*.*.*&screen=train**
