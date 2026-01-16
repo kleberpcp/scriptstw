@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Auto Evolução PP 1.4 (com Auto Recompensas configurável)
+// @name         Auto Evolução PP 1.4.1
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.4.1
 // @description  Script TribalWars
 // @author       edited by phxy
 // @include      **screen=main*
@@ -448,6 +448,7 @@ if (typeof $ !== 'undefined') {
     // fallback
     window.addEventListener('load', initAutoRewardsSettingsUI);
 }
+
 
 
 
