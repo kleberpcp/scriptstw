@@ -5,8 +5,8 @@
 // @description  Script TribalWars
 // @author       edited by phxy
 // @include      **screen=main*
-// @downloadURL  https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
-// @updateURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao.user.js
+// @downloadURL  https://github.com/kleberpcp/scriptstw/blob/master/auto-evolucao-PP.js
+// @updateURL    https://github.com/kleberpcp/scriptstw/blob/master/auto-evolucao-PP.js
 // @grant        none
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -448,3 +448,4 @@ if (typeof $ !== 'undefined') {
     // fallback
     window.addEventListener('load', initAutoRewardsSettingsUI);
 }
+
