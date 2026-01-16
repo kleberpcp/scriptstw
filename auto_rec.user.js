@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         Auto Recrutamento 1.2.2
-// @version      1.2.2
+// @name         Auto Recrutamento 1.2.3
+// @version      1.2.3
 // @description  Recrutamento automático PHX
 // @author       Phoenix
 // @include      https://*.*.*.*&screen=train**
@@ -9,8 +9,8 @@
 // @exclude      https://*.*.*.*&screen=train&mode=mass**
 // @exclude      https://*.*.*.*&screen=train&mode=mass_decommission**
 // @include      https://*.tribalwars.com.br/game.php?screen=train&t=*&village=*
-// @downloadURL  https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
-// @updateURL    https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
+// @downloadURL  https://raw.githubusercontent.com/kleberpcp/scriptstw/master/auto_rec.user.js
+// @updateURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto_rec.user.js
 // @require      https://code.jquery.com/jquery-2.2.4.min.js
 // @run-at       document-end
 // ==/UserScript==
