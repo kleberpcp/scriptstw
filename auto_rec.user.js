@@ -1,17 +1,19 @@
 // ==UserScript==
-// @name         Auto Recrutamento (PHX)
-// @version      1.0.2
-// @description  Metas + reservas + UI compacta + limite de 2 filas por prédio (Quartel/Estábulo/Oficina) — SEM recrutamento infinito (fila detectada por texto)
+// @name         Auto Recrutamento 1.2.1
+// @version      1.2.1
+// @description  Recrutamento automático PHX bot com reservas + reserva de fazenda e metas por aldeia + limite TOTAL de fila 2 + limite 2 por unidade + UI compacta recolher/expandir
 // @author       Phoenix
-// @include      https://*.tribalwars.com.br/game.php?*screen=train*
-// @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass*
-// @exclude      https://*.tribalwars.com.br/game.php?*screen=train&mode=mass_decommission*
-// @downloadURL    https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
-// @updateURL      https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
+// @include      https://*.*.*.*&screen=train**
+// @include      https://*.*.*.*&screen=stable**
+// @include      https://*.*.*.*&screen=barracks**
+// @exclude      https://*.*.*.*&screen=train&mode=mass**
+// @exclude      https://*.*.*.*&screen=train&mode=mass_decommission**
+// @include      https://*.tribalwars.com.br/game.php?screen=train&t=*&village=*
+// @downloadURL  https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
+// @updateURL    https://github.com/kleberpcp/scriptstw/blob/master/auto_rec.user.js
 // @require      https://code.jquery.com/jquery-2.2.4.min.js
 // @run-at       document-end
 // ==/UserScript==
-
 (function () {
   'use strict';
 
@@ -44,15 +46,31 @@
 
   // ✅ Mapeamento robusto por texto (PT-BR)
   const QUEUE_TEXT_MATCH = [
-    { key: "spear",    re: /\blanceiro\b/i },
-    { key: "sword",    re: /\bespadach/i },
-    { key: "axe",      re: /\b(bárbaro|barbaro)\b/i },
-    { key: "spy",      re: /\bexplorador\b/i },
+    // aceita singular e plural: Lanceiro / Lanceiros
+    { key: "spear",    re: /\blanceiros?\b/i },
+
+    // Espadachim / Espadachins
+    { key: "sword",    re: /\bespadachins?\b/i },
+
+    // Bárbaro / Bárbaros (com e sem acento)
+    { key: "axe",      re: /\b(bárbaros?|barbaros?)\b/i },
+
+    // Explorador / Exploradores
+    { key: "spy",      re: /\bexploradores?\b/i },
+
+    // Cavalaria leve (normalmente vem assim mesmo, já no singular)
     { key: "light",    re: /\bcavalaria\s+leve\b/i },
+
+    // Cavalaria pesada
     { key: "heavy",    re: /\bcavalaria\s+pesada\b/i },
-    { key: "ram",      re: /\b(ariete|aríete)\b/i },
-    { key: "catapult", re: /\bcatapulta\b/i },
+
+    // Ariete / Arietes (com e sem acento)
+    { key: "ram",      re: /\b(arietes?|aríetes?)\b/i },
+
+    // Catapulta / Catapultas
+    { key: "catapult", re: /\bcatapultas?\b/i },
   ];
+
 
   // =======================
   // STATE (por aldeia)
@@ -192,14 +210,17 @@
   }
 
   // =======================
-  // ✅ FILA: pega linhas e identifica unidade PELO TEXTO
+  // ✅ FILA: pega linhas e identifica unidade PELO LINK DE CANCELAR
   // =======================
   function getQueueRows() {
-    // cada linha da fila tem um botão/link "Cancelar"
-    const $cancels = $(`a, button, input[type="submit"], input[type="button"]`).filter(function () {
-      const t = ($(this).text() || $(this).val() || '').trim().toLowerCase();
-      return t === 'cancelar';
-    });
+    // Botões de cancelar da fila de treino normalmente têm "action=cancel" no href
+    let $cancels = $('a[href*="action=cancel"]');
+
+    // Se tiver tabela específica de fila, prioriza ela (evita pegar outros "cancelar" da página)
+    const $queueTables = $('table[id^="trainqueue"], #trainqueue, .trainqueue_wrap table');
+    if ($queueTables.length) {
+      $cancels = $queueTables.find('a[href*="action=cancel"]');
+    }
 
     const rows = [];
     $cancels.each(function () {
@@ -211,7 +232,6 @@
   }
 
   function detectUnitKeyFromQueueRow($tr) {
-    // texto costuma ser tipo: "1 Lanceiro" / "1 Cavalaria leve"
     const txt = ($tr.text() || '').toLowerCase();
 
     for (const m of QUEUE_TEXT_MATCH) {
@@ -237,9 +257,9 @@
 
   // =======================
   // ✅ CORE: respeita 2 filas por prédio
-  // (na tela combinada, pode preencher quartel + estábulo + oficina no mesmo submit)
   // =======================
   function tentativaDeRecrutamento() {
+    // só roda no combinado
     if (!/screen=train/.test(location.href)) return;
 
     const queueByGroup = getQueueCountByGroup();
@@ -250,6 +270,7 @@
       garage:   Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.garage),
     };
 
+    // 🔒 Se todos os prédios já estão com 2 filas, não faz nada
     if ((freeSlots.barracks + freeSlots.stable + freeSlots.garage) <= 0) return;
 
     const budget = getBudget();
@@ -263,15 +284,17 @@
       if (!meta || meta <= 0) continue;
 
       const $in = getUnitInput(u.key);
-      if (!$in.length) continue; // não disponível na tela
+      if (!$in.length) continue; // não disponível
 
       const g = u.group;
-      if (freeSlots[g] <= 0) continue; // ✅ prédio cheio (2 filas)
+      if (freeSlots[g] <= 0) continue; // prédio cheio (2 filas)
 
       const atual = getCurrentUnitCount(u.key);
       if (atual >= meta) continue;
 
       const falta = meta - atual;
+
+      // ✅ quantidadePorCiclo respeitada, mas ainda limitada pela meta
       let qtd = Math.min(Math.max(1, quantidadePorCiclo), falta);
 
       while (qtd > 0 && !canAddUnit(u.key, qtd, budget)) qtd--;
@@ -286,7 +309,7 @@
       budget.iron  -= cost.iron  * applied;
       budget.pop   -= (popPerUnit[u.key] || 0) * applied;
 
-      freeSlots[g] -= 1; // ✅ 1 unidade preenchida = 1 fila adicionada naquele prédio
+      freeSlots[g] -= 1; // 1 ordem a mais naquele prédio
       algo = true;
       desc.push(`${u.label} x${applied}`);
 
@@ -431,7 +454,7 @@
   }
 
   // =======================
-  // UI INJECT (mesma estética)
+  // UI INJECT
   // =======================
   $('body').append(`
 <style>
@@ -597,7 +620,7 @@
   });
   $('#saveSettings').on('click', salvarConfiguracoes);
 
-  // drag
+  // drag (snap básico nas bordas já com clamp)
   const MARGIN = 6;
   let isDragging = false, offsetX = 0, offsetY = 0;
 
