@@ -6,7 +6,7 @@
 // @author       edited by phxy
 // @include      **screen=main*
 // @downloadURL  https://raw.githubusercontent.com/kleberpcp/scriptstw/master/auto-evolucao-PP.js
-// @updateURL    https://github.com/kleberpcp/scriptstw/blob/master/auto-evolucao-PP.js
+// @updateURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao-PP.js
 // @grant        none
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -448,5 +448,6 @@ if (typeof $ !== 'undefined') {
     // fallback
     window.addEventListener('load', initAutoRewardsSettingsUI);
 }
+
 
 
