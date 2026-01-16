@@ -3,13 +3,12 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.4.1
 // @description  Script TribalWars
-// @author       edited by phxy
+// @author       Phoenix
 // @include      **screen=main*
 // @downloadURL  https://raw.githubusercontent.com/kleberpcp/scriptstw/master/auto-evolucao-PP.js
 // @updateURL    https://github.com/kleberpcp/scriptstw/raw/refs/heads/master/auto-evolucao-PP.js
-// @grant        none
-// @grant        GM_getValue
-// @grant        GM_setValue
+// @require      https://code.jquery.com/jquery-2.2.4.min.js
+// @run-at       document-end
 // ==/UserScript==
 'use strict';
 
@@ -448,6 +447,7 @@ if (typeof $ !== 'undefined') {
     // fallback
     window.addEventListener('load', initAutoRewardsSettingsUI);
 }
+
 
 
 
