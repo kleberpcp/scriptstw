@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Auto Recrutamento 1.2.1
-// @version      1.2.1
-// @description  Recrutamento automático PHX bot com reservas + reserva de fazenda e metas por aldeia + limite TOTAL de fila 2 + limite 2 por unidade + UI compacta recolher/expandir
+// @name         Auto Recrutamento 1.2.2
+// @version      1.2.2
+// @description  Recrutamento automático PHX
 // @author       Phoenix
 // @include      https://*.*.*.*&screen=train**
 // @include      https://*.*.*.*&screen=stable**
@@ -20,10 +20,19 @@
   // =======================
   // CONFIG
   // =======================
-  const MAX_FILAS_POR_PREDIO = 2;   // ✅ 2 filas no Quartel + 2 no Estábulo + 2 na Oficina
+  const MAX_FILAS_POR_PREDIO = 2;   // 2 filas no Quartel + 2 no Estábulo + 2 na Oficina
   const LOOP_MS = 3500;
 
   const villageId = new URLSearchParams(location.search).get('village') || '0';
+  const url = window.location.href;
+
+  // Redirecionamento automático: barracks/stable -> train
+  if (url.includes("&screen=barracks") || url.includes("&screen=stable")) {
+    setTimeout(() => {
+      const novaUrl = url.replace(/&screen=(barracks|stable)/, "&screen=train");
+      window.location.href = novaUrl;
+    }, 2000);
+  }
 
   const UNITS = [
     // Quartel
@@ -41,36 +50,25 @@
     { key: "catapult", label: "Catapulta",    icon: "/graphic/unit/unit_catapult.png", group: "garage" },
   ];
 
+  // PRIORIDADE de treino (ordem do array = prioridade; pode ajustar se quiser)
+  // Aqui CL vem antes de Bárbaro como pedido
+  const PRIORIDADE = ["light", "spy", "heavy", "spear", "sword", "axe", "ram", "catapult"];
+
   const UNIT_BY_KEY = Object.fromEntries(UNITS.map(u => [u.key, u]));
   const popPerUnit = { spear:1, sword:1, axe:1, spy:2, light:4, heavy:6, ram:5, catapult:8 };
 
-  // ✅ Mapeamento robusto por texto (PT-BR)
+  // Mapeamento texto da fila (singular e plural)
   const QUEUE_TEXT_MATCH = [
-    // aceita singular e plural: Lanceiro / Lanceiros
     { key: "spear",    re: /\blanceiros?\b/i },
-
-    // Espadachim / Espadachins
     { key: "sword",    re: /\bespadachins?\b/i },
-
-    // Bárbaro / Bárbaros (com e sem acento)
     { key: "axe",      re: /\b(bárbaros?|barbaros?)\b/i },
-
-    // Explorador / Exploradores
     { key: "spy",      re: /\bexploradores?\b/i },
-
-    // Cavalaria leve (normalmente vem assim mesmo, já no singular)
     { key: "light",    re: /\bcavalaria\s+leve\b/i },
-
-    // Cavalaria pesada
     { key: "heavy",    re: /\bcavalaria\s+pesada\b/i },
-
-    // Ariete / Arietes (com e sem acento)
     { key: "ram",      re: /\b(arietes?|aríetes?)\b/i },
-
-    // Catapulta / Catapultas
     { key: "catapult", re: /\bcatapultas?\b/i },
   ];
-
+  const QUEUE_MATCH_BY_KEY = Object.fromEntries(QUEUE_TEXT_MATCH.map(m => [m.key, m]));
 
   // =======================
   // STATE (por aldeia)
@@ -87,6 +85,7 @@
 
   let lastSuccess = null;
   let reloadInterval = null;
+  let captchaAtivo = false;
 
   // =======================
   // HELPERS
@@ -210,13 +209,11 @@
   }
 
   // =======================
-  // ✅ FILA: pega linhas e identifica unidade PELO LINK DE CANCELAR
+  // FILA
   // =======================
   function getQueueRows() {
-    // Botões de cancelar da fila de treino normalmente têm "action=cancel" no href
     let $cancels = $('a[href*="action=cancel"]');
 
-    // Se tiver tabela específica de fila, prioriza ela (evita pegar outros "cancelar" da página)
     const $queueTables = $('table[id^="trainqueue"], #trainqueue, .trainqueue_wrap table');
     if ($queueTables.length) {
       $cancels = $queueTables.find('a[href*="action=cancel"]');
@@ -240,29 +237,75 @@
     return null;
   }
 
-  function getQueueCountByGroup() {
-    const counts = { barracks: 0, stable: 0, garage: 0 };
+  // Snapshot da fila:
+  // - byGroup: quantas ORDENS por prédio (para limite 2)
+  // - byUnit: quantas UNIDADES por tipo (para não passar da meta)
+  function getQueueSnapshot() {
+    const byGroup = { barracks: 0, stable: 0, garage: 0 };
+    const byUnit  = {};
 
     const $rows = getQueueRows();
     $rows.each(function () {
-      const key = detectUnitKeyFromQueueRow($(this));
+      const $tr = $(this);
+      const key = detectUnitKeyFromQueueRow($tr);
       if (!key) return;
+
       const g = (UNIT_BY_KEY[key] || {}).group;
-      if (!g) return;
-      counts[g] += 1;
+      if (g) byGroup[g] += 1;
+
+      // tenta pegar quantidade: ex. "3 Bárbaros" ou "3x Bárbaros"
+      let qty = 1;
+      const txt = ($tr.text() || '');
+      const m = txt.match(/(\d+)\s*(?:x)?/i);
+      if (m) {
+        const q = parseInt(m[1], 10);
+        if (!isNaN(q) && q > 0) qty = q;
+      }
+
+      byUnit[key] = (byUnit[key] || 0) + qty;
     });
 
-    return counts;
+    return { byGroup, byUnit };
+  }
+
+  function getQueueCountByGroup() {
+    return getQueueSnapshot().byGroup;
   }
 
   // =======================
-  // ✅ CORE: respeita 2 filas por prédio
+  // CAPTCHA
+  // =======================
+  function isCaptchaOnScreen() {
+    // tenta achar imagens/containers de captcha ou texto típico
+    if ($('[src*="captcha"], img[id*="captcha"], #bot_protect, .bot_protect').length) {
+      return true;
+    }
+    const bodyText = $('body').text() || '';
+    if (/prote[cç][aã]o contra bots/i.test(bodyText)) return true;
+    return false;
+  }
+
+  function checkCaptcha() {
+    const active = isCaptchaOnScreen();
+    if (active && !captchaAtivo) {
+      captchaAtivo = true;
+      if (reloadInterval) clearInterval(reloadInterval);
+    } else if (!active && captchaAtivo) {
+      captchaAtivo = false;
+      restartReloadTimer();
+    }
+  }
+
+  // =======================
+  // CORE: respeita 2 filas por prédio + meta considerando fila
   // =======================
   function tentativaDeRecrutamento() {
-    // só roda no combinado
     if (!/screen=train/.test(location.href)) return;
+    if (captchaAtivo || isCaptchaOnScreen()) return; // pausa se captcha
 
-    const queueByGroup = getQueueCountByGroup();
+    const snap = getQueueSnapshot();
+    const queueByGroup = snap.byGroup;
+    const queuedUnits  = snap.byUnit;
 
     const freeSlots = {
       barracks: Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.barracks),
@@ -270,7 +313,6 @@
       garage:   Math.max(0, MAX_FILAS_POR_PREDIO - queueByGroup.garage),
     };
 
-    // 🔒 Se todos os prédios já estão com 2 filas, não faz nada
     if ((freeSlots.barracks + freeSlots.stable + freeSlots.garage) <= 0) return;
 
     const budget = getBudget();
@@ -279,25 +321,40 @@
     let algo = false;
     const desc = [];
 
-    for (const u of UNITS) {
+    // aplica prioridade
+    const unitsOrdered = [...UNITS].sort((a, b) => {
+      const ia = PRIORIDADE.indexOf(a.key);
+      const ib = PRIORIDADE.indexOf(b.key);
+      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    });
+
+    for (const u of unitsOrdered) {
       const meta = parseInt(metas[u.key] || 0, 10);
       if (!meta || meta <= 0) continue;
 
       const $in = getUnitInput(u.key);
-      if (!$in.length) continue; // não disponível
+      if (!$in.length) continue; // unidade não disponível
 
       const g = u.group;
-      if (freeSlots[g] <= 0) continue; // prédio cheio (2 filas)
+      if (freeSlots[g] <= 0) continue; // prédio já com 2 filas
 
-      const atual = getCurrentUnitCount(u.key);
-      if (atual >= meta) continue;
+      const atualVillage = getCurrentUnitCount(u.key);
+      const emFila       = queuedUnits[u.key] || 0;
+      const atualTotal   = atualVillage + emFila;
 
-      const falta = meta - atual;
+      // Já atingiu ou passou da meta contando fila
+      if (atualTotal >= meta) continue;
 
-      // ✅ quantidadePorCiclo respeitada, mas ainda limitada pela meta
+      let falta = meta - atualTotal;
+      if (falta <= 0) continue;
+
+      // quantidade por ciclo limitada pela falta pra não estourar meta
       let qtd = Math.min(Math.max(1, quantidadePorCiclo), falta);
 
-      while (qtd > 0 && !canAddUnit(u.key, qtd, budget)) qtd--;
+      // garante que cabe no orçamento
+      while (qtd > 0 && !canAddUnit(u.key, qtd, budget)) {
+        qtd--;
+      }
       if (qtd <= 0) continue;
 
       const applied = applyUnit(u.key, qtd);
@@ -364,6 +421,14 @@
       </div>
     `;
 
+    if (captchaAtivo) {
+      html += `
+        <div style="margin-top:6px;color:#b91c1c;font-weight:bold;">
+          ⛔ Captcha detectado – script pausado
+        </div>
+      `;
+    }
+
     if (lastSuccess) {
       html += `
         <div style="height:1px;background:rgba(139,92,47,.35);margin:8px 0;"></div>
@@ -387,6 +452,7 @@
 
   function restartReloadTimer() {
     if (reloadInterval) clearInterval(reloadInterval);
+    if (captchaAtivo) return; // não recarrega enquanto captcha ativo
     reloadInterval = setInterval(() => location.reload(), (tempoReloadMin * 60 * 1000));
   }
 
@@ -427,11 +493,11 @@
       const c = JSON.parse(confStr);
 
       quantidadePorCiclo = parseInt(c.quantidadePorCiclo || 1, 10);
-      tempoReloadMin = parseInt(c.tempoReloadMin || 10, 10);
+      tempoReloadMin     = parseInt(c.tempoReloadMin     || 10, 10);
 
       reservaMadeira = parseInt(c.reservaMadeira || 0, 10);
-      reservaArgila  = parseInt(c.reservaArgila || 0, 10);
-      reservaFerro   = parseInt(c.reservaFerro || 0, 10);
+      reservaArgila  = parseInt(c.reservaArgila  || 0, 10);
+      reservaFerro   = parseInt(c.reservaFerro   || 0, 10);
       reservaFazenda = parseInt(c.reservaFazenda || 0, 10);
 
       metas = Object.assign(metas, c.metas || {});
@@ -444,7 +510,9 @@
       $('#reservaFerro').val(reservaFerro);
       $('#reservaFazenda').val(reservaFazenda);
 
-      for (const u of UNITS) $(`#meta_${u.key}`).val(parseInt(metas[u.key] || 0, 10));
+      for (const u of UNITS) {
+        $(`#meta_${u.key}`).val(parseInt(metas[u.key] || 0, 10));
+      }
 
       const collapsed = localStorage.getItem(`recruit_ui_collapsed_${villageId}`) === '1';
       setCollapsed(collapsed, false);
@@ -620,7 +688,7 @@
   });
   $('#saveSettings').on('click', salvarConfiguracoes);
 
-  // drag (snap básico nas bordas já com clamp)
+  // drag
   const MARGIN = 6;
   let isDragging = false, offsetX = 0, offsetY = 0;
 
@@ -659,6 +727,7 @@
 
     setInterval(tentativaDeRecrutamento, LOOP_MS);
     setInterval(renderStatus, 3500);
+    setInterval(checkCaptcha, 2000);
   });
 
 })();
